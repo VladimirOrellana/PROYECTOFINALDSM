@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "940055010662",
+    "project_id": "comunidadactiva-79e77",
+    "storage_bucket": "comunidadactiva-79e77.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:940055010662:android:75872b8152acee6e62fca7",
+        "android_client_info": {
+          "package_name": "com.copito.comunidadactiva"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "940055010662-abqm8j1ru4rla97v76gt40gsm8gnumk0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.copito.comunidadactiva",
+            "certificate_hash": "e05edca3dec9742ea38148cfee37b12452698a9f"
+          }
+        },
+        {
+          "client_id": "940055010662-a0dvsgju0unj6ue0qsjkg6s5k32ctnbl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqW-1CwGevaccsSOOhxi0eoh23jiBE1Z0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "940055010662-a0dvsgju0unj6ue0qsjkg6s5k32ctnbl.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
