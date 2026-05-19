@@ -42,6 +42,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
+import com.copito.comunidadactiva.screens.EventosHomeScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -84,9 +85,11 @@ fun AppPrincipal(
                 }
             )
         } else {
-            HomeScreen(
+            EventosHomeScreen(
                 modifier = Modifier.padding(innerPadding),
                 email = usuarioActual?.email ?: "Usuario",
+                userId = usuarioActual?.uid ?: "",
+                db = db,
                 onLogout = {
                     scope.launch {
                         cerrarSesionCompleta(
