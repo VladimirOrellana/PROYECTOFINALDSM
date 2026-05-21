@@ -27,8 +27,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.copito.comunidadactiva.model.Evento
+import com.copito.comunidadactiva.repository.AsistenciaRepository
 import com.copito.comunidadactiva.repository.EventoRepository
+import com.copito.comunidadactiva.repository.ComentarioRepository
 import com.google.firebase.firestore.FirebaseFirestore
+import android.content.Context
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
+
 
 @Composable
 fun EventosHomeScreen(
@@ -39,6 +45,7 @@ fun EventosHomeScreen(
     onLogout: () -> Unit
 ) {
     var eventos by remember { mutableStateOf<List<Evento>>(emptyList()) }
+    var idsEventosConfirmados by remember { mutableStateOf<List<String>>(emptyList()) }
     var cargando by remember { mutableStateOf(false) }
     var mensaje by remember { mutableStateOf("") }
 
@@ -50,6 +57,10 @@ fun EventosHomeScreen(
     var fecha by remember { mutableStateOf("") }
     var hora by remember { mutableStateOf("") }
     var ubicacion by remember { mutableStateOf("") }
+
+    val asistenciaRepository = remember { AsistenciaRepository() }
+    val comentarioRepository = remember { ComentarioRepository() }
+    val context = LocalContext.current
 
     fun cargarEventos() {
         cargando = true
@@ -64,6 +75,18 @@ fun EventosHomeScreen(
             onError = { error ->
                 mensaje = error
                 cargando = false
+            }
+        )
+    }
+
+    fun cargarMisEventosConfirmados() {
+        asistenciaRepository.cargarIdsEventosConfirmadosPorUsuario(
+            userId = userId,
+            onResult = { ids ->
+                idsEventosConfirmados = ids
+            },
+            onError = {
+                mensaje = "No se pudieron cargar tus eventos confirmados."
             }
         )
     }
@@ -200,6 +223,7 @@ fun EventosHomeScreen(
 
     LaunchedEffect(Unit) {
         cargarEventos()
+        cargarMisEventosConfirmados()
     }
 
     Column(
@@ -339,6 +363,40 @@ fun EventosHomeScreen(
 
         Spacer(modifier = Modifier.height(4.dp))
 
+        val misEventosConfirmados = eventos.filter { evento ->
+            idsEventosConfirmados.contains(evento.id)
+        }
+
+        Text(
+            text = "Mis eventos confirmados",
+            style = MaterialTheme.typography.titleLarge
+        )
+
+        if (misEventosConfirmados.isEmpty()) {
+            Text("Aun no has confirmado asistencia a ningun evento.")
+        } else {
+            misEventosConfirmados.forEach { evento ->
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = evento.titulo,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(text = "Fecha: ${evento.fecha}")
+                        Text(text = "Hora: ${evento.hora}")
+                        Text(text = "Ubicacion: ${evento.ubicacion}")
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         Text(
             text = "Eventos disponibles",
             style = MaterialTheme.typography.titleLarge
@@ -370,20 +428,36 @@ fun EventosHomeScreen(
                         Text(text = "Hora: ${evento.hora}")
                         Text(text = "Ubicacion: ${evento.ubicacion}")
 
+                        AsistenciaEventoSection(
+                            eventId = evento.id,
+                            userId = userId,
+                            asistenciaRepository = asistenciaRepository,
+                            onAsistenciaActualizada = {
+                                cargarMisEventosConfirmados()
+                            }
+                        )
+
+                        ComentariosEventoSection(
+                            eventId = evento.id,
+                            userId = userId,
+                            comentarioRepository = comentarioRepository
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        OutlinedButton(
+                            onClick = { compartirEvento(context, evento) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Compartir evento")
+                        }
+
                         Button(
                             onClick = { prepararEdicion(evento) },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = !cargando
                         ) {
                             Text("Editar evento")
-                        }
-
-                        OutlinedButton(
-                            onClick = { eliminarEvento(evento) },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !cargando
-                        ) {
-                            Text("Eliminar evento")
                         }
                     }
                 }
@@ -395,6 +469,262 @@ fun EventosHomeScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Cerrar sesion")
+        }
+    }
+}
+
+@Composable
+fun AsistenciaEventoSection(
+    eventId: String,
+    userId: String,
+    asistenciaRepository: AsistenciaRepository,
+    onAsistenciaActualizada: () -> Unit = {}
+) {
+    var asistenciaConfirmada by remember { mutableStateOf(false) }
+    var totalAsistentes by remember { mutableStateOf(0) }
+    var mensaje by remember { mutableStateOf("") }
+
+    fun cargarEstadoAsistencia() {
+        if (eventId.isBlank() || userId.isBlank()) {
+            asistenciaConfirmada = false
+            totalAsistentes = 0
+            return
+        }
+
+        asistenciaRepository.verificarAsistenciaConfirmada(
+            eventId = eventId,
+            userId = userId,
+            onResult = { confirmado ->
+                asistenciaConfirmada = confirmado
+            },
+            onError = {
+                mensaje = "No se pudo verificar la asistencia"
+            }
+        )
+
+        asistenciaRepository.contarAsistentesConfirmados(
+            eventId = eventId,
+            onResult = { total ->
+                totalAsistentes = total
+            },
+            onError = {
+                mensaje = "No se pudo cargar el total de asistentes"
+            }
+        )
+    }
+
+    LaunchedEffect(eventId, userId) {
+        cargarEstadoAsistencia()
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Text(
+        text = "Asistentes confirmados: $totalAsistentes",
+        style = MaterialTheme.typography.bodyMedium
+    )
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    if (asistenciaConfirmada) {
+        OutlinedButton(
+            onClick = {
+                asistenciaRepository.cancelarAsistencia(
+                    eventId = eventId,
+                    userId = userId,
+                    onSuccess = {
+                        mensaje = "Asistencia cancelada."
+                        cargarEstadoAsistencia()
+                        onAsistenciaActualizada()
+                    },
+                    onError = {
+                        mensaje = "No se pudo cancelar la asistencia."
+                    }
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Cancelar asistencia")
+        }
+    } else {
+        Button(
+            onClick = {
+                asistenciaRepository.confirmarAsistencia(
+                    eventId = eventId,
+                    userId = userId,
+                    onSuccess = {
+                        mensaje = "Asistencia confirmada."
+                        cargarEstadoAsistencia()
+                        onAsistenciaActualizada()
+                    },
+                    onError = {
+                        mensaje = "No se pudo confirmar la asistencia."
+                    }
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Confirmar asistencia")
+        }
+    }
+
+    if (mensaje.isNotBlank()) {
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = mensaje,
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
+
+fun compartirEvento(
+    context: Context,
+    evento: Evento
+) {
+    val textoCompartir = """
+    Te invito al evento: ${evento.titulo}
+
+    Fecha: ${evento.fecha}
+    Hora: ${evento.hora}
+    Ubicacion: ${evento.ubicacion}
+
+    Descripcion:
+    ${evento.descripcion}
+
+    Para confirmar asistencia, inicia sesion en la app ComunidadActiva y presiona el boton "Confirmar asistencia" dentro del evento.
+
+    Compartido desde ComunidadActiva.
+""".trimIndent()
+
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "Evento comunitario: ${evento.titulo}")
+        putExtra(Intent.EXTRA_TEXT, textoCompartir)
+    }
+
+    context.startActivity(
+        Intent.createChooser(intent, "Compartir evento")
+    )
+}
+
+@Composable
+fun ComentariosEventoSection(
+    eventId: String,
+    userId: String,
+    comentarioRepository: ComentarioRepository
+) {
+    var comentarios by remember { mutableStateOf<List<com.copito.comunidadactiva.model.Comentario>>(emptyList()) }
+    var comentarioTexto by remember { mutableStateOf("") }
+    var calificacionTexto by remember { mutableStateOf("") }
+    var mensajeComentario by remember { mutableStateOf("") }
+
+    fun cargarComentarios() {
+        if (eventId.isBlank()) {
+            comentarios = emptyList()
+            return
+        }
+
+        comentarioRepository.cargarComentariosPorEvento(
+            eventId = eventId,
+            onSuccess = { lista ->
+                comentarios = lista
+            },
+            onError = {
+                mensajeComentario = "No se pudieron cargar los comentarios."
+            }
+        )
+    }
+
+    LaunchedEffect(eventId) {
+        cargarComentarios()
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    Text(
+        text = "Comentarios y calificaciones",
+        style = MaterialTheme.typography.titleSmall
+    )
+
+    OutlinedTextField(
+        value = comentarioTexto,
+        onValueChange = { comentarioTexto = it },
+        label = { Text("Comentario") },
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    OutlinedTextField(
+        value = calificacionTexto,
+        onValueChange = { calificacionTexto = it },
+        label = { Text("Calificacion 1 a 5") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true
+    )
+
+    Button(
+        onClick = {
+            val calificacion = calificacionTexto.toIntOrNull()
+
+            if (comentarioTexto.isBlank()) {
+                mensajeComentario = "Escribe un comentario."
+                return@Button
+            }
+
+            if (calificacion == null || calificacion !in 1..5) {
+                mensajeComentario = "La calificacion debe ser un numero del 1 al 5."
+                return@Button
+            }
+
+            comentarioRepository.guardarComentario(
+                eventId = eventId,
+                userId = userId,
+                comentario = comentarioTexto,
+                calificacion = calificacion,
+                onSuccess = {
+                    mensajeComentario = "Comentario guardado."
+                    comentarioTexto = ""
+                    calificacionTexto = ""
+                    cargarComentarios()
+                },
+                onError = {
+                    mensajeComentario = "No se pudo guardar el comentario."
+                }
+            )
+        },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Guardar comentario")
+    }
+
+    if (mensajeComentario.isNotBlank()) {
+        Text(
+            text = mensajeComentario,
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+
+    if (comentarios.isNotEmpty()) {
+        val promedio = comentarios.map { it.calificacion }.average()
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = "Resumen: ${comentarios.size} comentario(s) - Promedio: %.1f/5".format(promedio),
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "Comentarios del evento:",
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        comentarios.forEach { comentario ->
+            Text(
+                text = "★ ${comentario.calificacion}/5 - ${comentario.comentario}",
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }
