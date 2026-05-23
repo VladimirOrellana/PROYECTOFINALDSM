@@ -2,6 +2,7 @@ package com.copito.comunidadactiva.repository
 
 import com.copito.comunidadactiva.model.Evento
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 
 object EventoRepository {
 
@@ -11,28 +12,24 @@ object EventoRepository {
         onError: (String) -> Unit
     ) {
         db.collection("events")
-            .whereEqualTo("estado", "activo")
             .get()
-            .addOnSuccessListener { resultado ->
-                val listaEventos = resultado.documents.map { documento ->
-                    Evento(
-                        id = documento.id,
-                        titulo = documento.getString("titulo") ?: "",
-                        descripcion = documento.getString("descripcion") ?: "",
-                        fecha = documento.getString("fecha") ?: "",
-                        hora = documento.getString("hora") ?: "",
-                        ubicacion = documento.getString("ubicacion") ?: "",
-                        creadoPor = documento.getString("creadoPor") ?: "",
-                        estado = documento.getString("estado") ?: "activo",
-                        createdAt = documento.getLong("createdAt") ?: 0L,
-                        updatedAt = documento.getLong("updatedAt") ?: 0L
+            .addOnSuccessListener { snapshot ->
+                val eventos = snapshot.documents.mapNotNull { document ->
+                    document.toObject(Evento::class.java)?.copy(
+                        id = document.id
                     )
-                }.sortedByDescending { it.createdAt }
+                }
+                    .filter { evento ->
+                        evento.estado != "eliminado"
+                    }
+                    .sortedByDescending { evento ->
+                        evento.createdAt
+                    }
 
-                onSuccess(listaEventos)
+                onSuccess(eventos)
             }
-            .addOnFailureListener { error ->
-                onError("Error cargando eventos: ${error.message}")
+            .addOnFailureListener { exception ->
+                onError(exception.message ?: "Error al cargar eventos.")
             }
     }
 
@@ -42,25 +39,27 @@ object EventoRepository {
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
-        val datosEvento = hashMapOf<String, Any>(
-            "titulo" to evento.titulo,
-            "descripcion" to evento.descripcion,
-            "fecha" to evento.fecha,
-            "hora" to evento.hora,
-            "ubicacion" to evento.ubicacion,
-            "creadoPor" to evento.creadoPor,
-            "estado" to evento.estado,
-            "createdAt" to evento.createdAt,
-            "updatedAt" to evento.updatedAt
+        val ahora = System.currentTimeMillis()
+
+        val eventoParaGuardar = evento.copy(
+            estado = "activo",
+            createdAt = if (evento.createdAt == 0L) ahora else evento.createdAt,
+            updatedAt = ahora
         )
 
         db.collection("events")
-            .add(datosEvento)
-            .addOnSuccessListener {
-                onSuccess()
+            .add(eventoParaGuardar)
+            .addOnSuccessListener { documentReference ->
+                documentReference.update("id", documentReference.id)
+                    .addOnSuccessListener {
+                        onSuccess()
+                    }
+                    .addOnFailureListener { exception ->
+                        onError(exception.message ?: "Error al actualizar id del evento.")
+                    }
             }
-            .addOnFailureListener { error ->
-                onError("Error guardando evento: ${error.message}")
+            .addOnFailureListener { exception ->
+                onError(exception.message ?: "Error al guardar evento.")
             }
     }
 
@@ -71,27 +70,22 @@ object EventoRepository {
         onError: (String) -> Unit
     ) {
         if (evento.id.isBlank()) {
-            onError("No se pudo obtener el ID del evento.")
+            onError("No se pudo actualizar el evento porque no tiene id.")
             return
         }
 
-        val datosActualizados = mapOf(
-            "titulo" to evento.titulo,
-            "descripcion" to evento.descripcion,
-            "fecha" to evento.fecha,
-            "hora" to evento.hora,
-            "ubicacion" to evento.ubicacion,
-            "updatedAt" to System.currentTimeMillis()
+        val eventoActualizado = evento.copy(
+            updatedAt = System.currentTimeMillis()
         )
 
         db.collection("events")
             .document(evento.id)
-            .update(datosActualizados)
+            .set(eventoActualizado, SetOptions.merge())
             .addOnSuccessListener {
                 onSuccess()
             }
-            .addOnFailureListener { error ->
-                onError("Error actualizando evento: ${error.message}")
+            .addOnFailureListener { exception ->
+                onError(exception.message ?: "Error al actualizar evento.")
             }
     }
 
@@ -102,23 +96,50 @@ object EventoRepository {
         onError: (String) -> Unit
     ) {
         if (eventId.isBlank()) {
-            onError("No se pudo obtener el ID del evento.")
+            onError("No se pudo eliminar el evento porque no tiene id.")
             return
         }
 
-        val datosActualizados = mapOf(
-            "estado" to "eliminado",
-            "updatedAt" to System.currentTimeMillis()
-        )
-
         db.collection("events")
             .document(eventId)
-            .update(datosActualizados)
+            .update(
+                mapOf(
+                    "estado" to "eliminado",
+                    "updatedAt" to System.currentTimeMillis()
+                )
+            )
             .addOnSuccessListener {
                 onSuccess()
             }
-            .addOnFailureListener { error ->
-                onError("Error eliminando evento: ${error.message}")
+            .addOnFailureListener { exception ->
+                onError(exception.message ?: "Error al eliminar evento.")
+            }
+    }
+
+    fun finalizarEvento(
+        db: FirebaseFirestore,
+        eventId: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (eventId.isBlank()) {
+            onError("No se pudo finalizar el evento porque no tiene id.")
+            return
+        }
+
+        db.collection("events")
+            .document(eventId)
+            .update(
+                mapOf(
+                    "estado" to "finalizado",
+                    "updatedAt" to System.currentTimeMillis()
+                )
+            )
+            .addOnSuccessListener {
+                onSuccess()
+            }
+            .addOnFailureListener { exception ->
+                onError(exception.message ?: "Error al finalizar evento.")
             }
     }
 }
